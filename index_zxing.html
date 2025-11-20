@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verificatore Biglietti - ZXing Version</title>
+<style>
+ body { font-family: system-ui; padding: 12px; }
+ #video { width:100%; max-width:480px; border:1px solid #ccc; }
+ #status { font-size:1.4rem; font-weight:700; margin-top:10px; }
+ .green{color:#0a0;} .red{color:#c00;} .orange{color:#e67e22;}
+</style>
+</head>
+<body>
+<h1>Verificatore Biglietti (ZXing iPhone compatibile)</h1>
+
+<p>Carica tickets.json: <input id="fileInput" type="file" accept=".json"></p>
+
+<button id="startBtn">Avvia fotocamera</button>
+<button id="stopBtn" disabled>Ferma</button>
+
+<video id="video" autoplay playsinline></video>
+<div id="status">Stato: <span id="stateText">inattivo</span></div>
+
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<script>
+let tickets={}, stream=null, scanning=false;
+const codeReader = new ZXing.BrowserQRCodeReader();
+const video = document.getElementById('video');
+const stateText = document.getElementById('stateText');
+
+document.getElementById('fileInput').addEventListener('change', async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  tickets = JSON.parse(await f.text());
+  alert("Caricati " + Object.keys(tickets).length + " biglietti");
+});
+
+document.getElementById('startBtn').onclick = async ()=>{
+  scanning=true;
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  stateText.textContent="in ascolto";
+
+  const devices = await ZXing.BrowserQRCodeReader.listVideoInputDevices();
+  const camera = devices.find(d=>d.label.toLowerCase().includes("back"))?.deviceId || devices[0].deviceId;
+
+  codeReader.decodeFromVideoDevice(camera, video, (res, err)=>{
+    if(res){
+      const raw = res.getText();
+      let id = null;
+      let m = raw.match(/ID=\s*([A-Za-z0-9_-]+)/i);
+      if(m) id = m[1];
+      else{
+        m = raw.match(/(STU\d{3,})/i);
+        if(m) id = m[1];
+      }
+      if(id){
+        validate(id);
+      }
+    }
+  });
+};
+
+document.getElementById('stopBtn').onclick = ()=>{
+  scanning=false;
+  codeReader.reset();
+  stateText.textContent="inattivo";
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+};
+
+function validate(id){
+  if(!tickets[id]){
+    stateText.textContent="NON VALIDO"; stateText.className="red"; return;
+  }
+  if(tickets[id].used){
+    stateText.textContent="GIÀ UTILIZZATO"; stateText.className="orange"; return;
+  }
+  tickets[id].used = true;
+  stateText.textContent="VALIDO"; stateText.className="green";
+}
+</script>
+</body>
+</html>
