@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Verificatore Biglietti - Versione Online</title>
+<style>
+  body { font-family: system-ui; padding: 12px; }
+  #video { width:100%; max-width:480px; border:1px solid #ccc; }
+  #status { font-size:1.4rem; font-weight:700; margin-top:10px; }
+  .green{color:#0a0;} .red{color:#c00;} .orange{color:#e67e22;}
+</style>
+</head>
+<body>
+<h1>Verificatore Biglietti (online)</h1>
+<p>Carica la lista biglietti (tickets.json): <input id="fileInput" type="file" accept=".json"></p>
+
+<button id="startBtn">Avvia fotocamera</button>
+<button id="stopBtn" disabled>Ferma fotocamera</button>
+
+<video id="video" autoplay playsinline></video>
+<div id="status">Stato: <span id="stateText">inattivo</span></div>
+
+<script>
+let tickets={}, scanning=false, stream=null;
+const video=document.getElementById('video');
+const stateText=document.getElementById('stateText');
+
+document.getElementById('fileInput').addEventListener('change', async e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  tickets=JSON.parse(await f.text());
+  alert("Lista biglietti caricata: " + Object.keys(tickets).length);
+});
+
+document.getElementById('startBtn').onclick=async()=>{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  video.srcObject=stream;
+  scanning=true;
+  document.getElementById('startBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  stateText.textContent="in ascolto";
+  runScan();
+};
+
+document.getElementById('stopBtn').onclick=()=>{
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+  scanning=false;
+  stateText.textContent="inattivo";
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+};
+
+function parse(raw){
+  let m=raw.match(/ID=\s*([A-Za-z0-9_-]+)/i);
+  if(m) return m[1];
+  m=raw.match(/(STU\d{3,})/i);
+  if(m) return m[1];
+  return null;
+}
+
+async function runScan(){
+  if(!('BarcodeDetector' in window)){
+    alert("BarcodeDetector non supportato su questo browser.");
+    return;
+  }
+  const formats=await BarcodeDetector.getSupportedFormats();
+  const det=new BarcodeDetector({formats});
+  while(scanning){
+    let codes=await det.detect(video);
+    if(codes.length){
+      let id=parse(codes[0].rawValue||"");
+      if(id){
+        if(!tickets[id]){
+          stateText.textContent="NON VALIDO"; stateText.className="red";
+        } else if(tickets[id].used){
+          stateText.textContent="GIÀ UTILIZZATO"; stateText.className="orange";
+        } else {
+          tickets[id].used=true;
+          stateText.textContent="VALIDO"; stateText.className="green";
+        }
+        await new Promise(r=>setTimeout(r,900));
+      }
+    }
+    await new Promise(r=>setTimeout(r,200));
+  }
+}
+</script>
+</body>
+</html>
